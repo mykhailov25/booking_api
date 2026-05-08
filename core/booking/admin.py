@@ -1,8 +1,9 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 
+from .models import SpecialistProfile
 from .models import Booking, Service
-
+from .models import WorkingHours
 User = get_user_model()
 
 
@@ -41,3 +42,14 @@ class BookingAdmin(admin.ModelAdmin):
 
     def specialist_name(self, obj):
         return f"{obj.specialist.user.first_name} {obj.specialist.user.last_name}"
+
+
+@admin.register(SpecialistProfile)
+class SpecialistProfileAdmin(admin.ModelAdmin):
+    list_display = ('user',)
+
+
+@admin.register(WorkingHours)
+class WorkingHoursAdmin(admin.ModelAdmin):
+    list_display = ('specialist', 'workdays', 'from_hour', 'to_hour')
+    list_filter = ('workdays',)

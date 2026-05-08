@@ -1,10 +1,11 @@
 from datetime import timedelta
-
-from django.contrib.auth.models import BaseUserManager
-from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
+from django.core.exceptions import ValidationError
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 
-class UserManager(BaseUserManager):#кастомный юзер менеджер
+
+class UserManager(BaseUserManager):  # кастомный юзер менеджер
     def create_user(self, email, password=None, **extra_fields):
         if not email:
             raise ValueError("Email обязателен")
@@ -71,14 +72,18 @@ class Service(models.Model):  # Модель для услуг от Специа
         return f'{self.name} - {self.description[:30]}'
 
 
-class SpecialistProfile(
-    models.Model):  # модель в которой мы добавляем описание для мастера и какие услуги могут быть от него
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='specialist_profiles')
+# модель в которой мы добавляем описание для мастера и какие услуги могут быть от него
+class SpecialistProfile(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='specialist_profile')
     description = models.TextField(blank=True, null=True, )
     services = models.ManyToManyField(Service, related_name='specialists', blank=True)
 
+    class Meta:
+        verbose_name = 'Профиль специалиста'
+        verbose_name_plural = 'Профиль специалистов'
+
     def __str__(self):
-        return f'Мастер: {self.user.first_name}'
+        return f'{self.user.first_name} {self.user.last_name}'
 
 
 class WorkingHours(models.Model):  # модель чтобы определять когда Специалист работет
@@ -92,29 +97,31 @@ class WorkingHours(models.Model):  # модель чтобы определят�
         (6, "Суббота",),
         (7, "Воскресенье",),
     )
-    workdays = models.PositiveIntegerField(choices=WORKDAYS_CHOICES, )  # выбираем рабочие дни
+    workdays = models.PositiveIntegerField(choices=WORKDAYS_CHOICES)  # выбираем рабочие дни
     from_hour = models.TimeField()  # со скольки работаем
     to_hour = models.TimeField()  # до скольки работаем
 
     class Meta:
+        verbose_name = 'Рабочие дни'
+        verbose_name_plural = 'Рабочие дни'
         unique_together = ('specialist', 'workdays', 'from_hour')
         ordering = ['workdays', 'from_hour']
 
     def __str__(self):
-        return f'{self.specialist.user.first_name} - {self.workdays} ({self.from_hour}-{self.to_hour})'
+        return f'{self.specialist.user.first_name} - {self.get_workdays_display()} ({self.from_hour}-{self.to_hour})'
 
 
 class Booking(models.Model):  # связуящая модель для бронирования по времени между специалистом(его услугой) и клиентом
     client = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='client_booking',
+        related_name='client_bookings',
         limit_choices_to={'role': 'CL'}
     )
     specialist = models.ForeignKey(
         SpecialistProfile,
         on_delete=models.CASCADE,
-        related_name='specialist_booking',
+        related_name='specialist_bookings',
     )
     STATUS_CHOICES = (  # Статусы бронирования
         ('PE', 'Ожидает подтверджения'),
@@ -137,13 +144,15 @@ class Booking(models.Model):  # связуящая модель для брон�
     def end_time(self):
         return self.start_time + self.service.estimated_time
 
-    class Meta:
-        verbose_name = "Бронирование"
-        verbose_name_plural = "Бронирования"
+    def clean(self): #валидация чтобы нельзя было в админке и в принципе нельзя было
+        if self.start_time < timezone.now():
+            raise ValidationError("Нельзя бронировать в прошлом")
 
     def __str__(self):
         return (f'{self.client.first_name}'
-                f'к {self.specialist.user.first_name} {self.specialist.user.last_name} '
-                f'на {self.service.name} ({self.start_time.strftime("%d.%m %H:%M")})')
+                f' к {self.specialist.user.first_name} {self.specialist.user.last_name} '
+                f' на {self.service.name} ({self.start_time.strftime("%d.%m %H:%M")})')
 
-
+    class Meta:
+        verbose_name = "Бронирование"
+        verbose_name_plural = "Бронирования"

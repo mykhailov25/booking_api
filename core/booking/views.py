@@ -40,7 +40,7 @@ class BookingViewSet(viewsets.ModelViewSet):
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
     filter_backends = (DjangoFilterBackend, SearchFilter, OrderingFilter)
-    filterset_fields = ['client__name', 'specialist__name', 'service__name', 'status']
+    filterset_fields = ['client__first_name', 'specialist__first_name', 'service__name', 'status']
     search_fields = (
         'client__first_name',
         'client__last_name',
@@ -99,7 +99,8 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking = self.get_object()
         if booking.status == "CA":
             return Response({'detail': 'Бронирование уже отменено'}, status=status.HTTP_409_CONFLICT)
-        if booking.status == "CO":
-            booking.status = "DO"
-            booking.save()
+        if booking.status != "CO":
+            return Response({'detail': "Завершить можно только подтверджённую бронь}"}), status.HTTP_409_CONFLICT
+        booking.status = "DO"
+        booking.save()
         return Response({'detail': 'Бронирование завершено'}, status.HTTP_200_OK)

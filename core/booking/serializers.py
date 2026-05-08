@@ -1,5 +1,4 @@
-from django.db.models import F, ExpressionWrapper, DateTimeField
-from django.db.models import Q
+from django.db.models import F, ExpressionWrapper, DateTimeField,  Q
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -41,29 +40,34 @@ class BookingSerializer(serializers.ModelSerializer):
         service = data.get('service')
         start_time = data.get('start_time')
 
-        # если это ПАТЧ и эти поля не меняются
+        # Патч обработка
         if self.instance:
             specialist = self.instance.specialist or specialist
             service = self.instance.service or service
             start_time = self.instance.start_time or start_time
-        # если чего то не хватает то ДРФ выкинет ошибку по отдельным полям,
+
         # защита от edge case-ов например start_time = None
         if not all([specialist, service, start_time]):
             return data
 
-
+        #расчёт времени
         end_time = start_time + service.estimated_time
-        #считаем end_time прямо в запросе
-        overlaping_bookings = (Booking.objects.annotate(
+
+        # считаем end_time прямо в запросе + проверка пересечений брони
+        overlaping_bookings = (Booking.objects
+        .annotate(
             end_time=ExpressionWrapper(
                 F('start_time') + F('service__estimated_time'),
                 output_field=DateTimeField()
             )
-        ).filter(        # Проверка пересечений бронирования
+        )
+        .filter(
             Q(start_time__lt=end_time) & Q(end_time__gt=start_time),  # сама формула пересечения
             specialist=specialist,  # текущий специалист
             status__in=['PE', 'CO'],  # ищем только среди активных броней
-        ).exclude(id=self.instance.id if self.instance else None))  # исключаем текущую бронь при обновлении
+        )
+        .exclude(id=self.instance.id if self.instance else None))  # исключаем текущую бронь при обновлении
+
         if overlaping_bookings.exists():
             raise serializers.ValidationError("На это время у специалиста есть другая бронь")
 
@@ -91,8 +95,6 @@ class BookingSerializer(serializers.ModelSerializer):
         # проверяем диапозон времени
         if not (booking_start_time >= work_hours.from_hour and
                 booking_end_time <= work_hours.to_hour):
-            raise serializers.ValidationError(
-                f'Время записи выходит за рамки рабочего графика мастера '
-            )
+            raise serializers.ValidationError("Время записи выходит за рамки рабочего графика мастера")
 
         return data

@@ -2,16 +2,12 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 from datetime import timedelta, time
-
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from freezegun import freeze_time
 
 from .models import Service, WorkingHours, Booking, SpecialistProfile
-
-User = get_user_model()
 
 
 # Create your tests here.
@@ -29,6 +25,9 @@ class RegistrationTest(APITestCase):
         user = User.objects.filter(email='test@example.com').exists()
         self.assertTrue(user)
 
+        user = User.objects.get(email='test@example.com')
+        self.assertTrue(user.check_password('12345678'))
+
     def test_registration_duplicate_email(self):
         url = reverse('register')
         data = {
@@ -42,7 +41,6 @@ class RegistrationTest(APITestCase):
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.get(email='test@example.com')
         self.assertEqual(User.objects.count(), 1)
 
 
@@ -75,7 +73,7 @@ class LoginJWTTest(APITestCase):
 
 class BookingTest(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
+        self.user_client = User.objects.create_user(
             email='client@mail.com',
             password='12345678',
         )
@@ -108,7 +106,7 @@ class BookingTest(APITestCase):
 
     @freeze_time("2026-04-20 12:00:00")
     def test_booking_success(self):
-        self.client.force_authenticate(user=self.user)
+        self.client.force_authenticate(user=self.user_client)
 
         url = reverse('booking-list')
 
@@ -125,19 +123,21 @@ class BookingTest(APITestCase):
         self.assertEqual(Booking.objects.count(), 1)
 
         booking = Booking.objects.first()
-        self.assertEqual(booking.client, self.user)
+        self.assertEqual(booking.client, self.user_client)
         self.assertEqual(booking.specialist, self.specialist_profile)
+        self.assertEqual(booking.service, self.service)
+        self.assertEqual(booking.status, 'PE')
 
-    @freeze_time("2026-04-20 12:00:00")
+    @freeze_time("2026-04-25 12:00:00")
     def test_booking_in_past(self):
-        self.client.force_authenticate(user=self.user)
+        self.client.force_authenticate(user=self.user_client)
 
         url = reverse('booking-list')
 
         data = {
             "specialist": self.specialist_profile.id,
             "service": self.service.id,
-            "start_time": "2026-03-20T14:00:00Z", #старт тайм в прошлом
+            "start_time": "2026-03-25T14:00:00Z",  # старт тайм в прошлом(месяц назад)
         }
 
         response = self.client.post(url, data=data, format='json')
@@ -145,4 +145,3 @@ class BookingTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
         self.assertEqual(Booking.objects.count(), 0)
-
